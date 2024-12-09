@@ -255,6 +255,11 @@
             showError('正在准备下载...', 'info');
             
             try {
+                // 禁用按钮，防止重复点击
+                const downloadBtn = document.querySelector('button[onclick="startDownload()"]');
+                downloadBtn.disabled = true;
+                downloadBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: {
@@ -264,8 +269,19 @@
                     body: JSON.stringify({
                         url: url,
                         format_id: formatId
-                    })
+                    }),
+                    // 添加超时设置
+                    signal: AbortSignal.timeout(10000)
                 });
+
+                // 重新启用按钮
+                downloadBtn.disabled = false;
+                downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '下载失败');
+                }
 
                 const data = await response.json();
                 
@@ -295,8 +311,18 @@
                 
                 currentVideoInfo = null;
             } catch (error) {
-                showError('下载失败');
-                console.error('Error:', error);
+                // 检查是否是超时错误
+                if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+                    showError('请求超时，请重试');
+                } else {
+                    showError(error.message || '下载失败');
+                }
+                console.error('Download error:', error);
+
+                // 确保按钮被重新启用
+                const downloadBtn = document.querySelector('button[onclick="startDownload()"]');
+                downloadBtn.disabled = false;
+                downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         }
 
@@ -308,11 +334,14 @@
             videoList.insertBefore(downloadingItem, videoList.firstChild);
             const newItem = videoList.firstElementChild;
 
-            newItem.querySelector('h3').textContent = currentVideoInfo.info.title || '演示视频';
+            const title = currentVideoInfo?.info?.title || '演示视频';
+            newItem.querySelector('h3').textContent = title;
+
             const progressText = newItem.querySelector('.progress-text');
             progressText.textContent = 'Vercel 环境不支持实际下载，这是界面演示';
             progressText.classList.add('text-yellow-500');
 
+            // 清理输入状态
             document.getElementById('videoUrl').value = '';
             document.getElementById('videoInfoPanel').classList.add('hidden');
             currentVideoInfo = null;
@@ -326,7 +355,8 @@
             videoList.insertBefore(downloadingItem, videoList.firstChild);
             const newItem = videoList.firstElementChild;
 
-            newItem.querySelector('h3').textContent = currentVideoInfo.info.title || '未知视频';
+            const title = currentVideoInfo?.info?.title || '未知视频';
+            newItem.querySelector('h3').textContent = title;
             newItem.setAttribute('data-video-id', videoId);
 
             // 开始轮询进度
@@ -336,6 +366,10 @@
         async function pollProgress(videoId, element) {
             try {
                 const response = await fetch(`/progress/${videoId}`);
+                if (!response.ok) {
+                    throw new Error('获取进度失败');
+                }
+
                 const data = await response.json();
 
                 if (data.status === 'demo') {
@@ -358,10 +392,14 @@
                 setTimeout(() => pollProgress(videoId, element), 1000);
             } catch (error) {
                 console.error('Progress error:', error);
+                const progressText = element.querySelector('.progress-text');
+                progressText.textContent = '获取进度失败';
+                progressText.classList.add('text-red-500');
             }
         }
 
         function showError(message, type = 'error') {
+            console.log(`${type}: ${message}`);  // 添加日志
             const colors = {
                 'error': 'bg-red-500',
                 'warning': 'bg-yellow-500',

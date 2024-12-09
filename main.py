@@ -43,7 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 templates = Jinja2Templates(directory="templates")
 
-# 在 Vercel 环境��使用 /tmp 目录
+# 在 Vercel 环境中使用 /tmp 目录
 DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -99,9 +99,16 @@ async def home(request: Request):
 async def start_download(request: Request):
     """处理下载请求"""
     try:
-        data = await request.json()
+        # 添加请求超时处理
+        try:
+            data = await asyncio.wait_for(request.json(), timeout=5.0)
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                status_code=408,
+                content={"error": "请求超时，请重试"}
+            )
+
         url = data.get('url')
-        
         if not url:
             return JSONResponse(
                 status_code=400,
@@ -110,35 +117,68 @@ async def start_download(request: Request):
 
         # 获取视频信息
         if data.get('get_info'):
-            info = get_video_info(url)
-            return JSONResponse(content={"info": info})
+            try:
+                info = get_video_info(url)
+                return JSONResponse(
+                    status_code=200,
+                    content={"info": info}
+                )
+            except Exception as e:
+                logger.error(f"Error getting video info: {str(e)}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"获取视频信息失败: {str(e)}"}
+                )
 
         # Vercel 环境提示
         if os.environ.get("VERCEL"):
-            return JSONResponse(content={
-                "error": "Vercel 环境不支持视频下载，请在本地运行此应用。",
-                "type": "vercel_limitation",
-                "video_id": "demo-" + str(uuid.uuid4())
-            })
+            demo_id = f"demo-{str(uuid.uuid4())}"
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "error": "Vercel 环境不支持视频下载，请在本地运行此应用。",
+                    "type": "vercel_limitation",
+                    "video_id": demo_id
+                }
+            )
 
         # 本地环境处理下载
-        video_id = str(uuid.uuid4())
-        format_id = data.get('format_id', 'best')
-        
-        video_info = get_video_info(url)
-        downloads[video_id] = {
-            'status': 'downloading',
-            'progress': 0,
-            'info': video_info
-        }
-        
-        return JSONResponse(content={"video_id": video_id})
+        try:
+            video_id = str(uuid.uuid4())
+            format_id = data.get('format_id', 'best')
+            
+            # 获取视频信息
+            video_info = get_video_info(url)
+            
+            # 存储下载信息
+            downloads[video_id] = {
+                'status': 'downloading',
+                'progress': 0,
+                'info': video_info,
+                'start_time': datetime.now().isoformat()
+            }
+            
+            return JSONResponse(
+                status_code=200,
+                content={"video_id": video_id}
+            )
+        except Exception as e:
+            logger.error(f"Error starting download: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"开始下载失败: {str(e)}"}
+            )
 
+    except json.JSONDecodeError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "无效的请求数据格式"}
+        )
     except Exception as e:
-        logger.error(f"Download error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={"error": f"下载失败: {str(e)}"}
+            content={"error": f"服务器错误: {str(e)}"}
         )
 
 @app.get("/progress/{video_id}")
