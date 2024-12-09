@@ -14,6 +14,7 @@ import logging
 import traceback
 from typing import Optional
 import shutil
+import uuid
 
 # 配置日志
 logging.basicConfig(
@@ -149,33 +150,41 @@ async def start_download(request: Request):
         data = await request.json()
         url = data['url']
         
-        # 如果只是获取信息，直接返回视频信息
-        if data.get('get_info', False):
-            video_info = get_video_info(url)
-            return {
-                "info": video_info
-            }
+        # 如果只是获取信息
+        if data.get('get_info'):
+            info = get_video_info(url)
+            return JSONResponse(content={"info": info})
         
-        # 否则开始下载
+        # 开始下载
+        video_id = str(uuid.uuid4())
         format_id = data.get('format_id', 'best')
-        video_id = datetime.now().strftime('%Y%m%d%H%M%S')
         
-        video_info = get_video_info(url)
+        # 在 Vercel 环境中，返回提示信息
+        if os.environ.get("VERCEL"):
+            return JSONResponse(
+                content={
+                    "error": "Vercel 环境不支持直接下载功能。请在本地环境运行此应用以使用完整功能。",
+                    "type": "vercel_limitation"
+                },
+                status_code=400
+            )
         
         downloads[video_id] = {
-            'url': url,
-            'info': video_info,
             'status': 'downloading',
             'progress': 0,
-            'format_id': format_id,
-            'start_time': datetime.now().isoformat()
+            'downloaded': 0,
+            'total': 0,
+            'speed': 0,
+            'eta': 0,
+            'info': get_video_info(url)
         }
         
+        # 启动下载任务
         asyncio.create_task(download_video(url, video_id, format_id))
         
-        return {"video_id": video_id}
+        return JSONResponse(content={"video_id": video_id})
     except Exception as e:
-        logger.error(f"Error in download route: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error in start_download: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={"error": str(e)}

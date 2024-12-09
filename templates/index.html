@@ -229,74 +229,55 @@
             const formatId = document.getElementById('formatSelect').value;
             if (!url) return;
             
-            // 开始下载
-            const response = await fetch('/download', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url, format_id: formatId})
-            });
-            const data = await response.json();
-            
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-
-            // 添加下载中的视频到列表
-            const videoList = document.getElementById('videoList');
-            const template = document.getElementById('downloadingTemplate');
-            const downloadingItem = template.content.cloneNode(true);
-            const videoId = data.video_id;
-            
-            // 将新的下载项插入到列表最前面
-            videoList.insertBefore(downloadingItem, videoList.firstChild);
-            const newItem = videoList.firstElementChild;
-            
-            // 清空输入框
-            document.getElementById('videoUrl').value = '';
-
-            // 轮询进度
-            const progressInterval = setInterval(async () => {
-                const progressResponse = await fetch(`/progress/${videoId}`);
-                const progressData = await progressResponse.json();
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url, format_id: formatId})
+                });
+                const data = await response.json();
                 
-                const progressBar = newItem.querySelector('.progress-bar');
-                const progressText = newItem.querySelector('.text-gray-600');
-                
-                if (progressData.status === 'completed') {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
-                    progressText.textContent = '下载完成！';
-                    setTimeout(() => location.reload(), 1000);
-                } else if (progressData.status === 'error') {
-                    clearInterval(progressInterval);
-                    progressText.textContent = `下载失败: ${progressData.error}`;
-                    progressText.classList.add('text-red-600');
-                } else {
-                    progressBar.style.width = `${progressData.progress}%`;
-                    const downloadInfo = newItem.querySelector('.download-info');
-                    downloadInfo.classList.remove('hidden');
-                    
-                    // 更新进度文本
-                    progressText.textContent = `下载中: ${progressData.progress.toFixed(1)}%`;
-                    
-                    // 更新下载信息
-                    const downloaded = (progressData.downloaded / 1024 / 1024).toFixed(1);
-                    const total = (progressData.total / 1024 / 1024).toFixed(1);
-                    const speed = (progressData.speed / 1024 / 1024).toFixed(1);
-                    
-                    downloadInfo.querySelector('.downloaded').textContent = downloaded;
-                    downloadInfo.querySelector('.total').textContent = total;
-                    downloadInfo.querySelector('.speed').textContent = speed;
-                    downloadInfo.querySelector('.eta').textContent = 
-                        progressData.eta > 0 ? `${progressData.eta} 秒` : '计算中';
-                    
-                    // 更新标题
-                    if (progressData.info && progressData.info.title) {
-                        newItem.querySelector('h3').textContent = progressData.info.title;
+                if (data.error) {
+                    if (data.type === 'vercel_limitation') {
+                        showError(data.error, 'warning');
+                    } else {
+                        showError(data.error);
                     }
+                    return;
                 }
-            }, 1000);
+
+                // 添加下载中的视频到列表
+                const videoList = document.getElementById('videoList');
+                const template = document.getElementById('downloadingTemplate');
+                const downloadingItem = template.content.cloneNode(true);
+                const videoId = data.video_id;
+                
+                // 将新的下载项插入到列表最前面
+                videoList.insertBefore(downloadingItem, videoList.firstChild);
+                const newItem = videoList.firstElementChild;
+                
+                // 清空输入框和隐藏视频信息面板
+                document.getElementById('videoUrl').value = '';
+                document.getElementById('videoInfoPanel').classList.add('hidden');
+                currentVideoInfo = null;
+
+                // 设置视频标题
+                newItem.querySelector('h3').textContent = currentVideoInfo.info.title;
+
+                // 添加按钮事件
+                const pauseBtn = newItem.querySelector('.pause-btn');
+                const deleteBtn = newItem.querySelector('.delete-btn');
+                
+                pauseBtn.onclick = () => togglePause(videoId);
+                deleteBtn.onclick = () => deleteVideo(videoId);
+                
+                newItem.setAttribute('data-video-id', videoId);
+
+                // 开始轮询进度
+                pollProgress(videoId, newItem);
+            } catch (error) {
+                showError('开始下载失败：' + error.message);
+            }
         }
 
         async function togglePause(videoId) {
@@ -347,27 +328,20 @@
             }
         }
 
-        // 修改 startDownload 函数，添加按钮事件
-        function addDownloadingItem(videoId) {
-            // ... 原有代码 ...
+        // 修改错误提示函数以支持不同类型
+        function showError(message, type = 'error') {
+            const colors = {
+                'error': 'bg-red-500',
+                'warning': 'bg-yellow-500',
+                'info': 'bg-blue-500'
+            };
+            const bgColor = colors[type] || colors.error;
             
-            // 添加按钮事件
-            const pauseBtn = newItem.querySelector('.pause-btn');
-            const deleteBtn = newItem.querySelector('.delete-btn');
-            
-            pauseBtn.onclick = () => togglePause(videoId);
-            deleteBtn.onclick = () => deleteVideo(videoId);
-            
-            newItem.setAttribute('data-video-id', videoId);
-        }
-
-        // 添加错误处理函数
-        function showError(message) {
             const errorDiv = document.createElement('div');
-            errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            errorDiv.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50`;
             errorDiv.innerHTML = `
                 <div class="flex items-center">
-                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <i class="fas fa-${type === 'warning' ? 'exclamation-triangle' : 'exclamation-circle'} mr-2"></i>
                     <span>${message}</span>
                 </div>
             `;
