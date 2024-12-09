@@ -282,14 +282,14 @@
                 }
 
                 console.log('Parsed response:', data);
-
-                if (!response.ok) {
-                    throw new Error(data.error || `HTTP error! status: ${response.status}`);
-                }
                 
                 if (data.error) {
                     if (data.type === 'vercel_limitation') {
                         showError(data.error, 'warning');
+                        // 在 Vercel 环境中，仍然显示下载界面用于演示
+                        if (data.video_id) {
+                            addDownloadingItem(data.video_id, currentVideoInfo.info.title);
+                        }
                     } else {
                         showError(data.error);
                     }
@@ -301,40 +301,49 @@
                     return;
                 }
 
-                // 添加下载中的视频到列表
-                const videoList = document.getElementById('videoList');
-                const template = document.getElementById('downloadingTemplate');
-                const downloadingItem = template.content.cloneNode(true);
-                const videoId = data.video_id;
-                
-                // 将新的下载项插入到列表最前面
-                videoList.insertBefore(downloadingItem, videoList.firstChild);
-                const newItem = videoList.firstElementChild;
+                addDownloadingItem(data.video_id, currentVideoInfo.info.title);
                 
                 // 清空输入框和隐藏视频信息面板
                 document.getElementById('videoUrl').value = '';
                 document.getElementById('videoInfoPanel').classList.add('hidden');
-
-                // 设置视频标题
-                const title = currentVideoInfo.info.title || '未知视频';
-                newItem.querySelector('h3').textContent = title;
-                
                 currentVideoInfo = null;
 
-                // 添加按钮事件
-                const pauseBtn = newItem.querySelector('.pause-btn');
-                const deleteBtn = newItem.querySelector('.delete-btn');
-                
-                pauseBtn.onclick = () => togglePause(videoId);
-                deleteBtn.onclick = () => deleteVideo(videoId);
-                
-                newItem.setAttribute('data-video-id', videoId);
-
-                // 开始轮询进度
-                pollProgress(videoId, newItem);
             } catch (error) {
                 console.error('Download error:', error);
                 showError(error.message || '下载失败');
+            }
+        }
+
+        // 添加下载项到列表
+        function addDownloadingItem(videoId, title) {
+            const videoList = document.getElementById('videoList');
+            const template = document.getElementById('downloadingTemplate');
+            const downloadingItem = template.content.cloneNode(true);
+            
+            // 将新的下载项插入到列表最前面
+            videoList.insertBefore(downloadingItem, videoList.firstChild);
+            const newItem = videoList.firstElementChild;
+
+            // 设置视频标题
+            newItem.querySelector('h3').textContent = title || '未知视频';
+
+            // 添加按钮事件
+            const pauseBtn = newItem.querySelector('.pause-btn');
+            const deleteBtn = newItem.querySelector('.delete-btn');
+            
+            pauseBtn.onclick = () => togglePause(videoId);
+            deleteBtn.onclick = () => deleteVideo(videoId);
+            
+            newItem.setAttribute('data-video-id', videoId);
+
+            // 开始轮询进度
+            if (!videoId.startsWith('demo-')) {
+                pollProgress(videoId, newItem);
+            } else {
+                // 在演示模式下显示提示
+                const progressText = newItem.querySelector('.progress-text');
+                progressText.textContent = 'Vercel 环境不支持实际下载，这是界面演示';
+                progressText.classList.add('text-yellow-500');
             }
         }
 

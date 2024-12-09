@@ -43,7 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 templates = Jinja2Templates(directory="templates")
 
-# 在 Vercel 环境��使用 /tmp 目录
+# 在 Vercel 环境中使用 /tmp 目录
 DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -173,9 +173,11 @@ async def start_download(request: Request):
         # 在 Vercel 环境中，返回提示信息
         if os.environ.get("VERCEL"):
             return JSONResponse(
+                status_code=200,
                 content={
                     "error": "Vercel 环境不支持直接下载功能。请在本地环境运行此应用以使用完整功能。",
-                    "type": "vercel_limitation"
+                    "type": "vercel_limitation",
+                    "video_id": "demo-id"
                 }
             )
 
@@ -198,7 +200,10 @@ async def start_download(request: Request):
             # 启动下载任务
             asyncio.create_task(download_video(url, video_id, format_id))
             
-            return JSONResponse(content={"video_id": video_id})
+            return JSONResponse(
+                status_code=200,
+                content={"video_id": video_id}
+            )
         except Exception as e:
             logger.error(f"Error starting download: {str(e)}")
             return JSONResponse(
@@ -206,6 +211,12 @@ async def start_download(request: Request):
                 content={"error": f"开始下载失败: {str(e)}"}
             )
             
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid JSON format"}
+        )
     except Exception as e:
         logger.error(f"Error in start_download: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(
