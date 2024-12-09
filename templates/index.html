@@ -263,27 +263,21 @@
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         url: url,
-                        format_id: formatId
-                    }),
-                    // 添加超时设置
-                    signal: AbortSignal.timeout(10000)
+                        format_id: formatId,
+                        get_info: false
+                    })
                 });
 
                 // 重新启用按钮
                 downloadBtn.disabled = false;
                 downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || '下载失败');
-                }
-
                 const data = await response.json();
+                console.log('Download response:', data);  // 添加日志
                 
                 if (data.error) {
                     if (data.type === 'vercel_limitation') {
@@ -311,14 +305,9 @@
                 
                 currentVideoInfo = null;
             } catch (error) {
-                // 检查是否是超时错误
-                if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-                    showError('请求超时，请重试');
-                } else {
-                    showError(error.message || '下载失败');
-                }
                 console.error('Download error:', error);
-
+                showError('下载失败，请重试');
+                
                 // 确保按钮被重新启用
                 const downloadBtn = document.querySelector('button[onclick="startDownload()"]');
                 downloadBtn.disabled = false;
@@ -327,6 +316,7 @@
         }
 
         function showDemoDownload(videoId) {
+            console.log('Showing demo download:', videoId);  // 添加日志
             const videoList = document.getElementById('videoList');
             const template = document.getElementById('downloadingTemplate');
             const downloadingItem = template.content.cloneNode(true);
@@ -348,6 +338,7 @@
         }
 
         function showDownloadItem(videoId) {
+            console.log('Showing download item:', videoId);  // 添加日志
             const videoList = document.getElementById('videoList');
             const template = document.getElementById('downloadingTemplate');
             const downloadingItem = template.content.cloneNode(true);
@@ -366,11 +357,8 @@
         async function pollProgress(videoId, element) {
             try {
                 const response = await fetch(`/progress/${videoId}`);
-                if (!response.ok) {
-                    throw new Error('获取进度失败');
-                }
-
                 const data = await response.json();
+                console.log('Progress data:', data);  // 添加日志
 
                 if (data.status === 'demo') {
                     return;

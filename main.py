@@ -4,30 +4,26 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from pydantic import BaseModel
 import yt_dlp
 import asyncio
 import os
 import json
 from datetime import datetime
-from pathlib import Path
 import logging
-import traceback
-from typing import Optional
-import shutil
 import uuid
 
 # 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="YouTube 视频下载器",
-    description="一个简单的YouTube视频下载工具",
-    version="1.0.0"
-)
+# 定义请求模型
+class DownloadRequest(BaseModel):
+    url: str
+    format_id: str = 'best'
+    get_info: bool = False
+
+app = FastAPI()
 
 # 添加 CORS 支持
 app.add_middleware(
@@ -96,33 +92,20 @@ async def home(request: Request):
     })
 
 @app.post("/download")
-async def start_download(request: Request):
+async def start_download(request: DownloadRequest):
     """处理下载请求"""
     try:
-        # 添加请求超时处理
-        try:
-            data = await asyncio.wait_for(request.json(), timeout=5.0)
-        except asyncio.TimeoutError:
-            return JSONResponse(
-                status_code=408,
-                content={"error": "请求超时，请重试"}
-            )
-
-        url = data.get('url')
-        if not url:
+        if not request.url:
             return JSONResponse(
                 status_code=400,
                 content={"error": "请输入视频链接"}
             )
 
         # 获取视频信息
-        if data.get('get_info'):
+        if request.get_info:
             try:
-                info = get_video_info(url)
-                return JSONResponse(
-                    status_code=200,
-                    content={"info": info}
-                )
+                info = get_video_info(request.url)
+                return JSONResponse(content={"info": info})
             except Exception as e:
                 logger.error(f"Error getting video info: {str(e)}")
                 return JSONResponse(
@@ -133,52 +116,28 @@ async def start_download(request: Request):
         # Vercel 环境提示
         if os.environ.get("VERCEL"):
             demo_id = f"demo-{str(uuid.uuid4())}"
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "error": "Vercel 环境不支持视频下载，请在本地运行此应用。",
-                    "type": "vercel_limitation",
-                    "video_id": demo_id
-                }
-            )
+            return JSONResponse(content={
+                "error": "Vercel 环境不支持视频下载，请在本地运行此应用。",
+                "type": "vercel_limitation",
+                "video_id": demo_id
+            })
 
         # 本地环境处理下载
-        try:
-            video_id = str(uuid.uuid4())
-            format_id = data.get('format_id', 'best')
-            
-            # 获取视频信息
-            video_info = get_video_info(url)
-            
-            # 存储下载信息
-            downloads[video_id] = {
-                'status': 'downloading',
-                'progress': 0,
-                'info': video_info,
-                'start_time': datetime.now().isoformat()
-            }
-            
-            return JSONResponse(
-                status_code=200,
-                content={"video_id": video_id}
-            )
-        except Exception as e:
-            logger.error(f"Error starting download: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"开始下载失败: {str(e)}"}
-            )
+        video_id = str(uuid.uuid4())
+        video_info = get_video_info(request.url)
+        downloads[video_id] = {
+            'status': 'downloading',
+            'progress': 0,
+            'info': video_info
+        }
+        
+        return JSONResponse(content={"video_id": video_id})
 
-    except json.JSONDecodeError:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "无效的请求数据格式"}
-        )
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Download error: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={"error": f"服务器错误: {str(e)}"}
+            content={"error": f"下载失败: {str(e)}"}
         )
 
 @app.get("/progress/{video_id}")
