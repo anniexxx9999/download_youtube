@@ -11,6 +11,7 @@ from pathlib import Path
 import asyncio
 import logging
 import tempfile
+import re
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +45,22 @@ if not DOWNLOADS_INFO.exists():
     with open(DOWNLOADS_INFO, "w", encoding="utf-8") as f:
         json.dump([], f, ensure_ascii=False)
 
+def format_filesize(size_in_bytes):
+    """格式化文件大小"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_in_bytes < 1024:
+            return f"{size_in_bytes:.2f} {unit}"
+        size_in_bytes /= 1024
+    return f"{size_in_bytes:.2f} TB"
+
+def format_duration(seconds):
+    """格式化视频时长"""
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+    if minutes > 0:
+        return f"{minutes}分{remaining_seconds}秒"
+    return f"{remaining_seconds}秒"
+
 def load_downloads():
     try:
         if not DOWNLOADS_INFO.exists():
@@ -61,6 +78,15 @@ def save_downloads(downloads):
     except Exception as e:
         logger.error(f"保存下载历史失败: {e}")
 
+def normalize_url(url):
+    """标准化 YouTube URL"""
+    # 处理 Shorts URL
+    shorts_pattern = r'youtube.com/shorts/([a-zA-Z0-9_-]+)'
+    if re.search(shorts_pattern, url):
+        video_id = re.search(shorts_pattern, url).group(1)
+        return f'https://www.youtube.com/watch?v={video_id}'
+    return url
+
 class DownloadProgress:
     def __init__(self):
         self.current = 0
@@ -74,6 +100,9 @@ class DownloadProgress:
             self.total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
             self.speed = d.get('speed', 0)
             self.eta = d.get('eta', 0)
+            if self.total > 0:
+                progress = (self.current / self.total) * 100
+                logger.info(f"下载进度: {progress:.2f}%")
 
 @app.get("/")
 async def home(request: Request):
@@ -91,6 +120,9 @@ async def download_video(url: str, background_tasks: BackgroundTasks):
         # 验证URL
         if not url.startswith(('http://', 'https://')):
             raise HTTPException(status_code=400, detail="无效的URL格式")
+
+        # 标准化 URL
+        url = normalize_url(url)
 
         # 配置下载选项
         progress = DownloadProgress()
@@ -110,11 +142,20 @@ async def download_video(url: str, background_tasks: BackgroundTasks):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"获取视频信息失败: {str(e)}")
 
+        # 检查文件大小
+        filesize = info.get('filesize') or info.get('filesize_approx', 0)
+        if filesize > 50 * 1024 * 1024:  # 50MB
+            raise HTTPException(
+                status_code=400,
+                detail=f"视频文件太大 ({format_filesize(filesize)})，超过 50MB 限制"
+            )
+
         # 准备下载信息
         download_info = {
             "id": info.get("id", ""),
             "title": info.get("title", "未知标题"),
             "duration": info.get("duration", 0),
+            "duration_string": format_duration(info.get("duration", 0)),
             "uploader": info.get("uploader", "未知上传者"),
             "description": info.get("description", ""),
             "thumbnail": info.get("thumbnail", ""),
@@ -125,7 +166,8 @@ async def download_video(url: str, background_tasks: BackgroundTasks):
             "speed": "",
             "eta": "",
             "local_path": "",
-            "error": ""
+            "error": "",
+            "filesize": format_filesize(filesize)
         }
 
         # 更新下载列表
@@ -169,14 +211,14 @@ async def download_task(url: str, ydl_opts: dict, download_info: dict, progress:
                 for file in DOWNLOAD_DIR.glob("*"):
                     if download_info["title"] in file.name:
                         d["local_path"] = str(file.relative_to(DOWNLOAD_DIR))
-                        d["file_size"] = file.stat().st_size
+                        d["file_size"] = format_filesize(file.stat().st_size)
                         break
                 break
         save_downloads(downloads)
 
     except Exception as e:
         logger.error(f"下载任务失败: {e}")
-        # 更新错误���态
+        # 更新错误状态
         downloads = load_downloads()
         for d in downloads:
             if d["url"] == url:
