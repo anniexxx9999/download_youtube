@@ -8,8 +8,19 @@
     ],
     "routes": [
         {
+            "src": "/static/(.*)",
+            "dest": "/static/$1"
+        },
+        {
+            "src": "/downloads/(.*)",
+            "dest": "/downloads/$1"
+        },
+        {
             "src": "/(.*)",
             "dest": "main.py"
         }
-    ]
+    ],
+    "env": {
+        "PYTHONUNBUFFERED": "1"
+    }
 } 
