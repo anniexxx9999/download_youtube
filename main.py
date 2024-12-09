@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 import logging
+import tempfile
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +20,13 @@ app = FastAPI(title="YouTube 下载器")
 # 配置模板
 templates = Jinja2Templates(directory="templates")
 
-# 创建必要的目录
-DOWNLOAD_DIR = Path("downloads")
+# 在 Vercel 环境中使用临时目录
+TEMP_DIR = tempfile.gettempdir()
+DOWNLOAD_DIR = Path(TEMP_DIR) / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 # 配置静态文件
-app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
+app.mount("/downloads", StaticFiles(directory=str(DOWNLOAD_DIR)), name="downloads")
 
 # 存储下载信息的文件
 DOWNLOADS_INFO = DOWNLOAD_DIR / "info.json"
