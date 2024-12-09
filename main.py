@@ -69,14 +69,28 @@ async def download_video(url, video_id):
         try:
             if d['status'] == 'downloading':
                 progress_str = d.get('_percent_str', '0%')
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
+                speed = d.get('speed', 0)
+                
                 logger.info(f"Downloading progress: {progress_str}")
-                # 使用清理函数处理进度字符串
-                progress = clean_progress_string(progress_str)
-                downloads[video_id]['progress'] = progress
+                downloads[video_id].update({
+                    'progress': clean_progress_string(progress_str),
+                    'downloaded': downloaded,
+                    'total': total,
+                    'speed': speed,
+                    'eta': d.get('eta', 0)
+                })
             elif d['status'] == 'finished':
                 logger.info(f"Download finished: {d.get('filename', '')}")
-                downloads[video_id]['status'] = 'completed'
-                downloads[video_id]['file_path'] = d.get('filename', '')
+                downloads[video_id].update({
+                    'status': 'completed',
+                    'file_path': d.get('filename', ''),
+                    'downloaded': d.get('total_bytes', 0),
+                    'total': d.get('total_bytes', 0),
+                    'speed': 0,
+                    'eta': 0
+                })
             elif d['status'] == 'error':
                 logger.error(f"Download error: {d.get('error', '')}")
                 downloads[video_id]['status'] = 'error'
