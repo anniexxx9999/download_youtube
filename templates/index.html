@@ -5,69 +5,150 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube 视频下载器</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline/esm/index.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #f5f5f7;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #0071e3;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background: #0077ed;
+            transform: translateY(-1px);
+        }
+        
+        .input-focus {
+            box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1);
+        }
+
+        .action-button {
+            @apply p-2 rounded-lg transition-all duration-200 hover:bg-gray-100;
+        }
+
+        .action-button.danger {
+            @apply hover:bg-red-50 hover:text-red-500;
+        }
+
+        .action-button.primary {
+            @apply hover:bg-blue-50 hover:text-blue-500;
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
+<body class="min-h-screen">
+    <div class="container mx-auto px-4 py-12 max-w-5xl">
         <!-- 标题部分 -->
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-800 mb-2">YouTube 视频下载器</h1>
-            <p class="text-gray-600">输入YouTube视频链接即可轻松下载</p>
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-900 mb-3 tracking-tight">YouTube 视频下载器</h1>
+            <p class="text-gray-500 text-lg">输入YouTube视频链接即可轻松下载</p>
         </div>
 
         <!-- 下载表单 -->
-        <div class="max-w-xl mx-auto bg-white rounded-lg shadow-md p-6 mb-8">
-            <div class="flex gap-2">
+        <div class="glass-card rounded-2xl p-8 mb-12">
+            <div class="flex gap-3">
                 <input type="text" id="videoUrl" 
-                    class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                    class="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:input-focus text-base"
                     placeholder="请输入YouTube视频链接...">
+                <button onclick="getVideoInfo()" 
+                    class="btn-primary px-8 py-3 text-white rounded-xl font-medium text-base">
+                    获取信息
+                </button>
+            </div>
+            <!-- 视频信息和格式选择 -->
+            <div id="videoInfoPanel" class="hidden mt-6">
+                <h3 id="videoTitle" class="text-xl font-semibold mb-4 text-gray-900"></h3>
+                <div class="mb-5">
+                    <label class="block text-sm font-medium text-gray-600 mb-2">选择下载格式：</label>
+                    <select id="formatSelect" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:input-focus text-base">
+                    </select>
+                </div>
                 <button onclick="startDownload()" 
-                    class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
-                    下载
+                    class="btn-primary w-full px-6 py-3 text-white rounded-xl font-medium text-base">
+                    开始下载
                 </button>
             </div>
         </div>
 
-        <!-- 已下载视频列表 -->
-        <div class="max-w-4xl mx-auto">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">视频列表</h2>
-            <div id="videoList" class="grid gap-4">
+        <!-- 视频列表 -->
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">视频列表</h2>
+            <div id="videoList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- 下载中的视频模板 -->
                 <template id="downloadingTemplate">
-                    <div class="bg-white rounded-lg shadow-md p-4">
-                        <div class="flex gap-4">
-                            <div class="flex-1">
-                                <h3 class="text-xl font-semibold mb-2">{title}</h3>
-                                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                                    <div class="bg-blue-600 h-2.5 rounded-full transition-all" style="width: 0%"></div>
-                                </div>
-                                <div class="text-sm text-gray-600">
-                                    <p class="progress-text">准备下载...</p>
-                                    <p class="download-info hidden">
-                                        <span class="downloaded">0</span> / <span class="total">0</span> MB
-                                        <span class="speed">0</span> MB/s
-                                        <span class="eta">计算中</span>
-                                    </p>
-                                </div>
-                            </div>
+                    <div class="glass-card rounded-2xl p-6">
+                        <h3 class="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+                        <div class="w-full bg-gray-100 rounded-full h-3 mb-3">
+                            <div class="progress-bar bg-blue-500 h-3 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <div class="text-sm text-gray-600 mb-4">
+                            <p class="progress-text">准备下载...</p>
+                            <p class="download-info hidden space-x-4">
+                                <span><span class="downloaded">0</span> / <span class="total">0</span> MB</span>
+                                <span><span class="speed">0</span> MB/s</span>
+                                <span class="eta">计算中</span>
+                            </p>
+                        </div>
+                        <div class="flex gap-3">
+                            <button class="pause-btn flex-1 px-4 py-2 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600 transition-all">
+                                暂停
+                            </button>
+                            <button class="delete-btn flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-all">
+                                删除
+                            </button>
                         </div>
                     </div>
                 </template>
 
                 {% for video in videos %}
-                <div class="bg-white rounded-lg shadow-md p-4">
-                    <div class="flex gap-4">
-                        <div class="w-64">
-                            <video controls class="w-full rounded">
-                                <source src="/downloads/{{ video.id }}/{{ video.info.relative_path }}" type="video/mp4">
-                            </video>
+                <div class="glass-card rounded-2xl p-6 flex flex-col">
+                    <!-- 视频预览 -->
+                    <div class="w-full aspect-video mb-4">
+                        <video controls class="w-full h-full rounded-lg shadow-lg object-cover">
+                            <source src="/downloads/{{ video.id }}/{{ video.info.relative_path }}" type="video/mp4">
+                        </video>
+                    </div>
+                    
+                    <!-- 视频信息 -->
+                    <div class="flex-1">
+                        <h3 class="text-xl font-semibold mb-3 text-gray-900 line-clamp-2">{{ video.info.info.title }}</h3>
+                        <div class="space-y-2 text-gray-600 text-sm mb-4">
+                            <p>上传者: {{ video.info.info.uploader }}</p>
+                            <p>时长: {{ video.info.info.duration }}秒</p>
+                            <p>文件大小: {{ video.info.file_size }}</p>
+                            <p class="line-clamp-2 text-gray-500">{{ video.info.info.description[:100] }}...</p>
                         </div>
-                        <div class="flex-1">
-                            <h3 class="text-xl font-semibold mb-2">{{ video.info.info.title }}</h3>
-                            <p class="text-gray-600 mb-1">上传者: {{ video.info.info.uploader }}</p>
-                            <p class="text-gray-600 mb-1">时长: {{ video.info.info.duration }}秒</p>
-                            <p class="text-gray-600 mb-1">存储路径: {{ video.info.file_path }}</p>
-                            <p class="text-gray-600 text-sm mt-2">{{ video.info.info.description[:200] }}...</p>
-                        </div>
+                    </div>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
+                        <a href="/downloads/{{ video.id }}/{{ video.info.relative_path }}" 
+                           download 
+                           class="action-button primary flex items-center gap-2 text-gray-600">
+                            <i class="fas fa-download"></i>
+                            <span>下载</span>
+                        </a>
+                        <button onclick="deleteVideo('{{ video.id }}')" 
+                            class="action-button danger flex items-center gap-2 text-gray-600">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
@@ -76,15 +157,61 @@
     </div>
 
     <script>
-        async function startDownload() {
+        let currentVideoInfo = null;
+
+        async function getVideoInfo() {
             const url = document.getElementById('videoUrl').value;
+            if (!url) return;
+
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url, get_info: true})
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                currentVideoInfo = data;
+                
+                // 显示视频信息
+                document.getElementById('videoTitle').textContent = data.info.title;
+                
+                // 填充格式选项
+                const formatSelect = document.getElementById('formatSelect');
+                formatSelect.innerHTML = '';
+                
+                data.info.formats.forEach(format => {
+                    const option = document.createElement('option');
+                    option.value = format.format_id;
+                    const size = format.filesize ? `(${(format.filesize/1024/1024).toFixed(1)}MB)` : '';
+                    option.textContent = `${format.resolution} - ${format.ext} ${size}`;
+                    formatSelect.appendChild(option);
+                });
+
+                // 显示格式选择面板
+                document.getElementById('videoInfoPanel').classList.remove('hidden');
+            } catch (error) {
+                alert('获取视频信息失败：' + error.message);
+            }
+        }
+
+        async function startDownload() {
+            if (!currentVideoInfo) return;
+
+            const url = document.getElementById('videoUrl').value;
+            const formatId = document.getElementById('formatSelect').value;
             if (!url) return;
             
             // 开始下载
             const response = await fetch('/download', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url})
+                body: JSON.stringify({url, format_id: formatId})
             });
             const data = await response.json();
             
@@ -111,7 +238,7 @@
                 const progressResponse = await fetch(`/progress/${videoId}`);
                 const progressData = await progressResponse.json();
                 
-                const progressBar = newItem.querySelector('.bg-blue-600');
+                const progressBar = newItem.querySelector('.progress-bar');
                 const progressText = newItem.querySelector('.text-gray-600');
                 
                 if (progressData.status === 'completed') {
@@ -148,6 +275,68 @@
                     }
                 }
             }, 1000);
+        }
+
+        async function togglePause(videoId) {
+            try {
+                const response = await fetch(`/pause/${videoId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                const pauseBtn = document.querySelector(`[data-video-id="${videoId}"] .pause-btn`);
+                if (data.status === 'paused') {
+                    pauseBtn.textContent = '继续';
+                    pauseBtn.classList.replace('bg-yellow-500', 'bg-green-500');
+                    pauseBtn.classList.replace('hover:bg-yellow-600', 'hover:bg-green-600');
+                } else {
+                    pauseBtn.textContent = '暂停';
+                    pauseBtn.classList.replace('bg-green-500', 'bg-yellow-500');
+                    pauseBtn.classList.replace('hover:bg-green-600', 'hover:bg-yellow-600');
+                }
+            } catch (error) {
+                alert('操作失败：' + error.message);
+            }
+        }
+
+        async function deleteVideo(videoId) {
+            if (!confirm('确定要删除这个视频吗？')) return;
+            
+            try {
+                const response = await fetch(`/download/${videoId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                // 刷新页面
+                location.reload();
+            } catch (error) {
+                alert('删除失败：' + error.message);
+            }
+        }
+
+        // 修改 startDownload 函数，添加按钮事件
+        function addDownloadingItem(videoId) {
+            // ... 原有代码 ...
+            
+            // 添加按钮事件
+            const pauseBtn = newItem.querySelector('.pause-btn');
+            const deleteBtn = newItem.querySelector('.delete-btn');
+            
+            pauseBtn.onclick = () => togglePause(videoId);
+            deleteBtn.onclick = () => deleteVideo(videoId);
+            
+            newItem.setAttribute('data-video-id', videoId);
         }
     </script>
 </body>
