@@ -43,7 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 templates = Jinja2Templates(directory="templates")
 
-# 在 Vercel 环境中使用 /tmp 目录
+# 在 Vercel 环境��使用 /tmp 目录
 DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -71,24 +71,27 @@ def get_video_info(url):
             formats = []
             for f in info.get('formats', []):
                 if f.get('vcodec', 'none') != 'none':
-                    formats.append({
-                        'format_id': f.get('format_id', ''),
-                        'ext': f.get('ext', ''),
-                        'quality': f.get('quality', 0),
-                        'resolution': f.get('resolution', 'unknown'),
-                        'filesize': f.get('filesize', 0),
-                        'vcodec': f.get('vcodec', ''),
-                        'acodec': f.get('acodec', ''),
-                    })
+                    format_info = {
+                        'format_id': str(f.get('format_id', '')),
+                        'ext': str(f.get('ext', '')),
+                        'quality': int(f.get('quality', 0)),
+                        'resolution': str(f.get('resolution', 'unknown')),
+                        'filesize': int(f.get('filesize', 0)),
+                        'vcodec': str(f.get('vcodec', '')),
+                        'acodec': str(f.get('acodec', ''))
+                    }
+                    formats.append(format_info)
             
-            return {
-                'title': info['title'],
-                'duration': info.get('duration', 0),
-                'uploader': info.get('uploader', 'Unknown'),
-                'description': info.get('description', ''),
-                'thumbnail': info.get('thumbnail', ''),
+            # 确保所有值都是可序列化的
+            result = {
+                'title': str(info.get('title', 'Unknown Title')),
+                'duration': int(info.get('duration', 0)),
+                'uploader': str(info.get('uploader', 'Unknown')),
+                'description': str(info.get('description', '')),
+                'thumbnail': str(info.get('thumbnail', '')),
                 'formats': sorted(formats, key=lambda x: x.get('filesize', 0), reverse=True)
             }
+            return result
     except Exception as e:
         logger.error(f"Error getting video info: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -148,41 +151,61 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def start_download(request: Request):
     try:
         data = await request.json()
-        url = data['url']
-        
+        url = data.get('url')
+        if not url:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "URL is required"}
+            )
+
         # 如果只是获取信息
         if data.get('get_info'):
-            info = get_video_info(url)
-            return JSONResponse(content={"info": info})
-        
-        # 开始下载
-        video_id = str(uuid.uuid4())
-        format_id = data.get('format_id', 'best')
-        
+            try:
+                info = get_video_info(url)
+                return JSONResponse(content={"info": info})
+            except Exception as e:
+                logger.error(f"Error getting video info: {str(e)}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"获取视频信息失败: {str(e)}"}
+                )
+
         # 在 Vercel 环境中，返回提示信息
         if os.environ.get("VERCEL"):
             return JSONResponse(
                 content={
                     "error": "Vercel 环境不支持直接下载功能。请在本地环境运行此应用以使用完整功能。",
                     "type": "vercel_limitation"
-                },
-                status_code=400
+                }
             )
+
+        # 开始下载
+        video_id = str(uuid.uuid4())
+        format_id = data.get('format_id', 'best')
         
-        downloads[video_id] = {
-            'status': 'downloading',
-            'progress': 0,
-            'downloaded': 0,
-            'total': 0,
-            'speed': 0,
-            'eta': 0,
-            'info': get_video_info(url)
-        }
-        
-        # 启动下载任务
-        asyncio.create_task(download_video(url, video_id, format_id))
-        
-        return JSONResponse(content={"video_id": video_id})
+        try:
+            video_info = get_video_info(url)
+            downloads[video_id] = {
+                'status': 'downloading',
+                'progress': 0,
+                'downloaded': 0,
+                'total': 0,
+                'speed': 0,
+                'eta': 0,
+                'info': video_info
+            }
+            
+            # 启动下载任务
+            asyncio.create_task(download_video(url, video_id, format_id))
+            
+            return JSONResponse(content={"video_id": video_id})
+        except Exception as e:
+            logger.error(f"Error starting download: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"开始下载失败: {str(e)}"}
+            )
+            
     except Exception as e:
         logger.error(f"Error in start_download: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(

@@ -189,11 +189,18 @@
             }
 
             try {
+                showError('正在获取视频信息...', 'info');
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({url, get_info: true})
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '获取视频信息失败');
+                }
+
                 const data = await response.json();
                 
                 if (data.error) {
@@ -201,33 +208,48 @@
                     return;
                 }
 
+                if (!data.info || !data.info.formats) {
+                    showError('获取到的视频信息格式不正确');
+                    return;
+                }
+
                 currentVideoInfo = data;
                 
-                document.getElementById('videoTitle').textContent = data.info.title;
+                document.getElementById('videoTitle').textContent = data.info.title || '未知标题';
                 
                 const formatSelect = document.getElementById('formatSelect');
                 formatSelect.innerHTML = '';
                 
                 data.info.formats.forEach(format => {
+                    if (!format) return;
                     const option = document.createElement('option');
-                    option.value = format.format_id;
-                    const size = format.filesize ? `(${(format.filesize/1024/1024).toFixed(1)}MB)` : '';
-                    option.textContent = `${format.resolution} - ${format.ext} ${size}`;
+                    option.value = format.format_id || '';
+                    const resolution = format.resolution || '未知分辨率';
+                    const ext = format.ext || 'unknown';
+                    const size = format.filesize ? `(${(format.filesize/1024/1024).toFixed(1)}MB)` : '(大小未知)';
+                    option.textContent = `${resolution} - ${ext} ${size}`;
                     formatSelect.appendChild(option);
                 });
 
                 document.getElementById('videoInfoPanel').classList.remove('hidden');
             } catch (error) {
-                showError('获取视频信息失败：' + error.message);
+                showError(error.message || '获取视频信息失败');
+                console.error('Error:', error);
             }
         }
 
         async function startDownload() {
-            if (!currentVideoInfo) return;
+            if (!currentVideoInfo) {
+                showError('请先获取视频信息');
+                return;
+            }
 
             const url = document.getElementById('videoUrl').value;
             const formatId = document.getElementById('formatSelect').value;
-            if (!url) return;
+            if (!url || !formatId) {
+                showError('请选择下载格式');
+                return;
+            }
             
             try {
                 const response = await fetch('/download', {
@@ -235,6 +257,12 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({url, format_id: formatId})
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '下载失败');
+                }
+
                 const data = await response.json();
                 
                 if (data.error) {
@@ -259,10 +287,12 @@
                 // 清空输入框和隐藏视频信息面板
                 document.getElementById('videoUrl').value = '';
                 document.getElementById('videoInfoPanel').classList.add('hidden');
-                currentVideoInfo = null;
 
                 // 设置视频标题
-                newItem.querySelector('h3').textContent = currentVideoInfo.info.title;
+                const title = currentVideoInfo.info.title || '未知视频';
+                newItem.querySelector('h3').textContent = title;
+                
+                currentVideoInfo = null;
 
                 // 添加按钮事件
                 const pauseBtn = newItem.querySelector('.pause-btn');
@@ -276,7 +306,8 @@
                 // 开始轮询进度
                 pollProgress(videoId, newItem);
             } catch (error) {
-                showError('开始下载失败：' + error.message);
+                showError(error.message || '下载失败');
+                console.error('Error:', error);
             }
         }
 
