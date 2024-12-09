@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
-DOWNLOAD_DIR = "downloads"
+# 在 Vercel 环境中使用 /tmp 目录
+DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# 如果不在 Vercel 环境中，才挂载静态文件目录
+if not os.environ.get("VERCEL"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # 存储下载任务信息
 downloads = {}
