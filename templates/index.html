@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 视频下载器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- 标题部分 -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">YouTube 视频下载器</h1>
+            <p class="text-gray-600">输入YouTube视频链接即可轻松下载</p>
+        </div>
+
+        <!-- 下载表单 -->
+        <div class="max-w-xl mx-auto bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex gap-2">
+                <input type="text" id="videoUrl" 
+                    class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="请输入YouTube视频链接...">
+                <button onclick="startDownload()" 
+                    class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                    下载
+                </button>
+            </div>
+        </div>
+
+        <!-- 已下载视频列表 -->
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">视频列表</h2>
+            <div id="videoList" class="grid gap-4">
+                <!-- 下载中的视频模板 -->
+                <template id="downloadingTemplate">
+                    <div class="bg-white rounded-lg shadow-md p-4">
+                        <div class="flex gap-4">
+                            <div class="flex-1">
+                                <h3 class="text-xl font-semibold mb-2">{title}</h3>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                                    <div class="bg-blue-600 h-2.5 rounded-full transition-all" style="width: 0%"></div>
+                                </div>
+                                <p class="text-sm text-gray-600">准备下载...</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                {% for video in videos %}
+                <div class="bg-white rounded-lg shadow-md p-4">
+                    <div class="flex gap-4">
+                        <div class="w-64">
+                            <video controls class="w-full rounded">
+                                <source src="/downloads/{{ video.id }}/{{ video.info.relative_path }}" type="video/mp4">
+                            </video>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2">{{ video.info.info.title }}</h3>
+                            <p class="text-gray-600 mb-1">上传者: {{ video.info.info.uploader }}</p>
+                            <p class="text-gray-600 mb-1">时长: {{ video.info.info.duration }}秒</p>
+                            <p class="text-gray-600 mb-1">存储路径: {{ video.info.file_path }}</p>
+                            <p class="text-gray-600 text-sm mt-2">{{ video.info.info.description[:200] }}...</p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function startDownload() {
+            const url = document.getElementById('videoUrl').value;
+            if (!url) return;
+            
+            // 开始下载
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url})
+            });
+            const data = await response.json();
+            
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            // 添加下载中的视频到列表
+            const videoList = document.getElementById('videoList');
+            const template = document.getElementById('downloadingTemplate');
+            const downloadingItem = template.content.cloneNode(true);
+            const videoId = data.video_id;
+            
+            // 将新的下载项插入到列表最前面
+            videoList.insertBefore(downloadingItem, videoList.firstChild);
+            const newItem = videoList.firstElementChild;
+            
+            // 清空输入框
+            document.getElementById('videoUrl').value = '';
+
+            // 轮询进度
+            const progressInterval = setInterval(async () => {
+                const progressResponse = await fetch(`/progress/${videoId}`);
+                const progressData = await progressResponse.json();
+                
+                const progressBar = newItem.querySelector('.bg-blue-600');
+                const progressText = newItem.querySelector('.text-gray-600');
+                
+                if (progressData.status === 'completed') {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '下载完成！';
+                    setTimeout(() => location.reload(), 1000);
+                } else if (progressData.status === 'error') {
+                    clearInterval(progressInterval);
+                    progressText.textContent = `下载失败: ${progressData.error}`;
+                    progressText.classList.add('text-red-600');
+                } else {
+                    progressBar.style.width = `${progressData.progress}%`;
+                    progressText.textContent = `下载中: ${progressData.progress.toFixed(1)}%`;
+                    // 更新标题
+                    if (progressData.info && progressData.info.title) {
+                        newItem.querySelector('h3').textContent = progressData.info.title;
+                    }
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html> 
