@@ -40,7 +40,14 @@
                                 <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
                                     <div class="bg-blue-600 h-2.5 rounded-full transition-all" style="width: 0%"></div>
                                 </div>
-                                <p class="text-sm text-gray-600">准备下载...</p>
+                                <div class="text-sm text-gray-600">
+                                    <p class="progress-text">准备下载...</p>
+                                    <p class="download-info hidden">
+                                        <span class="downloaded">0</span> / <span class="total">0</span> MB
+                                        <span class="speed">0</span> MB/s
+                                        <span class="eta">计算中</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -118,7 +125,23 @@
                     progressText.classList.add('text-red-600');
                 } else {
                     progressBar.style.width = `${progressData.progress}%`;
+                    const downloadInfo = newItem.querySelector('.download-info');
+                    downloadInfo.classList.remove('hidden');
+                    
+                    // 更新进度文本
                     progressText.textContent = `下载中: ${progressData.progress.toFixed(1)}%`;
+                    
+                    // 更新下载信息
+                    const downloaded = (progressData.downloaded / 1024 / 1024).toFixed(1);
+                    const total = (progressData.total / 1024 / 1024).toFixed(1);
+                    const speed = (progressData.speed / 1024 / 1024).toFixed(1);
+                    
+                    downloadInfo.querySelector('.downloaded').textContent = downloaded;
+                    downloadInfo.querySelector('.total').textContent = total;
+                    downloadInfo.querySelector('.speed').textContent = speed;
+                    downloadInfo.querySelector('.eta').textContent = 
+                        progressData.eta > 0 ? `${progressData.eta} 秒` : '计算中';
+                    
                     // 更新标题
                     if (progressData.info && progressData.info.title) {
                         newItem.querySelector('h3').textContent = progressData.info.title;
