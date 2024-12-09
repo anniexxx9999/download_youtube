@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
 import os
 import json
@@ -17,11 +18,20 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YouTube 下载器")
 
+# 添加 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 配置模板
 templates = Jinja2Templates(directory="templates")
 
-# 在 Vercel 环境中使用临时目录
-TEMP_DIR = tempfile.gettempdir()
+# 在 Vercel 环境中使用 /tmp 目录
+TEMP_DIR = "/tmp" if os.environ.get("VERCEL") else tempfile.gettempdir()
 DOWNLOAD_DIR = Path(TEMP_DIR) / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
@@ -36,6 +46,8 @@ if not DOWNLOADS_INFO.exists():
 
 def load_downloads():
     try:
+        if not DOWNLOADS_INFO.exists():
+            return []
         with open(DOWNLOADS_INFO, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
@@ -83,11 +95,12 @@ async def download_video(url: str, background_tasks: BackgroundTasks):
         # 配置下载选项
         progress = DownloadProgress()
         ydl_opts = {
-            'format': 'best',  # 最佳质量
+            'format': 'best[filesize<50M]',  # 限制文件大小
             'outtmpl': str(DOWNLOAD_DIR / '%(title)s.%(ext)s'),
             'progress_hooks': [progress.progress_hook],
             'quiet': True,
             'no_warnings': True,
+            'max_filesize': 50 * 1024 * 1024,  # 50MB 限制
         }
 
         # 获取视频信息
@@ -163,7 +176,7 @@ async def download_task(url: str, ydl_opts: dict, download_info: dict, progress:
 
     except Exception as e:
         logger.error(f"下载任务失败: {e}")
-        # 更新错误状态
+        # 更新错误���态
         downloads = load_downloads()
         for d in downloads:
             if d["url"] == url:
