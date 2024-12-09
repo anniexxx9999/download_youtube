@@ -90,13 +90,28 @@
         <!-- 视频列表 -->
         <div>
             <h2 class="text-2xl font-bold text-gray-900 mb-6">视频列表</h2>
+            {% if is_vercel %}
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            注意：在 Vercel 环境中，由于服务器限制，视频文件将存储在临时目录中，重启后将被清除。
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
             <div id="videoList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- 下载中的视频模板 -->
                 <template id="downloadingTemplate">
                     <div class="glass-card rounded-2xl p-6">
-                        <h3 class="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+                        <h3 class="text-xl font-semibold text-gray-900 mb-4 line-clamp-2">{title}</h3>
                         <div class="w-full bg-gray-100 rounded-full h-3 mb-3">
-                            <div class="progress-bar bg-blue-500 h-3 rounded-full" style="width: 0%"></div>
+                            <div class="progress-bar bg-blue-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
                         </div>
                         <div class="text-sm text-gray-600 mb-4">
                             <p class="progress-text">准备下载...</p>
@@ -108,10 +123,10 @@
                         </div>
                         <div class="flex gap-3">
                             <button class="pause-btn flex-1 px-4 py-2 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600 transition-all">
-                                暂停
+                                <i class="fas fa-pause mr-2"></i>暂停
                             </button>
                             <button class="delete-btn flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-all">
-                                删除
+                                <i class="fas fa-trash mr-2"></i>删除
                             </button>
                         </div>
                     </div>
@@ -120,19 +135,26 @@
                 {% for video in videos %}
                 <div class="glass-card rounded-2xl p-6 flex flex-col">
                     <!-- 视频预览 -->
-                    <div class="w-full aspect-video mb-4">
+                    <div class="w-full aspect-video mb-4 relative group">
                         <video controls class="w-full h-full rounded-lg shadow-lg object-cover">
                             <source src="/downloads/{{ video.id }}/{{ video.info.relative_path }}" type="video/mp4">
                         </video>
+                        <div class="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                            <a href="/downloads/{{ video.id }}/{{ video.info.relative_path }}" 
+                               download 
+                               class="text-white hover:text-blue-200 transition-colors">
+                                <i class="fas fa-download text-3xl"></i>
+                            </a>
+                        </div>
                     </div>
                     
                     <!-- 视频信息 -->
                     <div class="flex-1">
                         <h3 class="text-xl font-semibold mb-3 text-gray-900 line-clamp-2">{{ video.info.info.title }}</h3>
                         <div class="space-y-2 text-gray-600 text-sm mb-4">
-                            <p>上传者: {{ video.info.info.uploader }}</p>
-                            <p>时长: {{ video.info.info.duration }}秒</p>
-                            <p>文件大小: {{ video.info.file_size }}</p>
+                            <p><i class="fas fa-user mr-2"></i>{{ video.info.info.uploader }}</p>
+                            <p><i class="fas fa-clock mr-2"></i>{{ video.info.info.duration }}秒</p>
+                            <p><i class="fas fa-file-alt mr-2"></i>{{ video.info.file_size }}</p>
                             <p class="line-clamp-2 text-gray-500">{{ video.info.info.description[:100] }}...</p>
                         </div>
                     </div>
@@ -161,7 +183,10 @@
 
         async function getVideoInfo() {
             const url = document.getElementById('videoUrl').value;
-            if (!url) return;
+            if (!url) {
+                showError('请输入视频链接');
+                return;
+            }
 
             try {
                 const response = await fetch('/download', {
@@ -172,16 +197,14 @@
                 const data = await response.json();
                 
                 if (data.error) {
-                    alert(data.error);
+                    showError(data.error);
                     return;
                 }
 
                 currentVideoInfo = data;
                 
-                // 显示视频信息
                 document.getElementById('videoTitle').textContent = data.info.title;
                 
-                // 填充格式选项
                 const formatSelect = document.getElementById('formatSelect');
                 formatSelect.innerHTML = '';
                 
@@ -193,10 +216,9 @@
                     formatSelect.appendChild(option);
                 });
 
-                // 显示格式选择面板
                 document.getElementById('videoInfoPanel').classList.remove('hidden');
             } catch (error) {
-                alert('获取视频信息失败：' + error.message);
+                showError('获取视频信息失败：' + error.message);
             }
         }
 
@@ -337,6 +359,20 @@
             deleteBtn.onclick = () => deleteVideo(videoId);
             
             newItem.setAttribute('data-video-id', videoId);
+        }
+
+        // 添加错误处理函数
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            errorDiv.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
         }
     </script>
 </body>

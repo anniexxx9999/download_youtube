@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import yt_dlp
 import asyncio
 import os
@@ -13,10 +15,31 @@ import traceback
 from typing import Optional
 import shutil
 
-logging.basicConfig(level=logging.INFO)
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(
+    title="YouTube 视频下载器",
+    description="一个简单的YouTube视频下载工具",
+    version="1.0.0"
+)
+
+# 添加 CORS 支持
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 添加 Gzip 压缩
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 templates = Jinja2Templates(directory="templates")
 
 # 在 Vercel 环境中使用 /tmp 目录
@@ -63,93 +86,16 @@ def get_video_info(url):
                 'uploader': info.get('uploader', 'Unknown'),
                 'description': info.get('description', ''),
                 'thumbnail': info.get('thumbnail', ''),
-                'formats': formats
+                'formats': sorted(formats, key=lambda x: x.get('filesize', 0), reverse=True)
             }
     except Exception as e:
         logger.error(f"Error getting video info: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def clean_progress_string(progress_str):
-    """清理进度字符串中的 ANSI 转义序列"""
-    import re
-    # 移除 ANSI 转义序列
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    cleaned = ansi_escape.sub('', progress_str)
-    try:
-        # 提取数字
-        number = float(re.search(r'[\d.]+', cleaned).group())
-        return number
-    except (AttributeError, ValueError):
-        return 0.0
-
-async def download_video(url, video_id, format_id='best'):
-    download_path = os.path.join(DOWNLOAD_DIR, f"{video_id}")
-    os.makedirs(download_path, exist_ok=True)
-    
-    def progress_hook(d):
-        try:
-            if downloads[video_id]['status'] == 'paused':
-                raise Exception("Download paused")
-            if d['status'] == 'downloading':
-                progress_str = d.get('_percent_str', '0%')
-                downloaded = d.get('downloaded_bytes', 0)
-                total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
-                speed = d.get('speed', 0)
-                
-                logger.info(f"Downloading progress: {progress_str}")
-                downloads[video_id].update({
-                    'progress': clean_progress_string(progress_str),
-                    'downloaded': downloaded,
-                    'total': total,
-                    'speed': speed,
-                    'eta': d.get('eta', 0)
-                })
-            elif d['status'] == 'finished':
-                logger.info(f"Download finished: {d.get('filename', '')}")
-                downloads[video_id].update({
-                    'status': 'completed',
-                    'file_path': d.get('filename', ''),
-                    'downloaded': d.get('total_bytes', 0),
-                    'total': d.get('total_bytes', 0),
-                    'speed': 0,
-                    'eta': 0,
-                    'completed_time': datetime.now().isoformat()
-                })
-            elif d['status'] == 'error':
-                logger.error(f"Download error: {str(d.get('error', 'Unknown error'))}")
-                downloads[video_id]['status'] = 'error'
-                downloads[video_id]['error'] = str(d.get('error', 'Unknown error'))
-        except Exception as e:
-            logger.error(f"Error in progress_hook: {str(e)}\n{traceback.format_exc()}")
-            downloads[video_id]['status'] = 'error'
-            downloads[video_id]['error'] = str(e)
-    
-    ydl_opts = {
-        'format': format_id,
-        'outtmpl': f'{download_path}/%(title)s.%(ext)s',
-        'progress_hooks': [progress_hook],
-        'verbose': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        },
-        'nocheckcertificate': True,
-        'ignoreerrors': False,
-        'no_warnings': False,
-        'geo_bypass': True,
-        'geo_bypass_country': 'US',
-        'socket_timeout': 30,
-        'legacy_server_connect': True,
-        'no_color': True
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"Starting download for video {video_id} with format {format_id}")
-            await asyncio.get_event_loop().run_in_executor(None, ydl.download, [url])
-    except Exception as e:
-        logger.error(f"Download failed: {str(e)}\n{traceback.format_exc()}")
-        downloads[video_id]['status'] = 'error'
-        downloads[video_id]['error'] = str(e)
+@app.get("/api/health")
+async def health_check():
+    """健康检查接口"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
 async def home(request: Request):
@@ -157,22 +103,18 @@ async def home(request: Request):
         videos = []
         for video_id, info in downloads.items():
             if info['status'] == 'completed':
-                # 处理文件路径，移除 downloads 目录前缀
                 if 'file_path' in info:
                     file_path = info['file_path']
-                    # 移除 downloads/video_id 前缀
                     relative_path = os.path.relpath(file_path, os.path.join(DOWNLOAD_DIR, video_id))
                     info['relative_path'] = relative_path
                     
-                    # 获取文件大小
                     try:
                         file_size = os.path.getsize(file_path)
-                        # 转换为 MB
                         info['file_size'] = f"{(file_size / 1024 / 1024):.1f} MB"
                     except Exception as e:
+                        logger.error(f"Error getting file size: {str(e)}")
                         info['file_size'] = "未知"
 
-                # 添加下载完成时间
                 info['completed_time'] = info.get('completed_time', datetime.now().isoformat())
                 videos.append({
                     'id': video_id,
@@ -185,11 +127,21 @@ async def home(request: Request):
         return templates.TemplateResponse("index.html", {
             "request": request, 
             "videos": videos,
-            "downloads": DOWNLOAD_DIR
+            "downloads": DOWNLOAD_DIR,
+            "is_vercel": bool(os.environ.get("VERCEL"))
         })
     except Exception as e:
         logger.error(f"Error in home route: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理"""
+    logger.error(f"Global error: {str(exc)}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "type": "error"}
+    )
 
 @app.post("/download")
 async def start_download(request: Request):
@@ -241,14 +193,6 @@ async def get_progress(video_id: str):
             status_code=500,
             content={"error": str(e)}
         )
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception: {str(exc)}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={"error": str(exc)}
-    )
 
 @app.post("/pause/{video_id}")
 async def pause_download(video_id: str):
